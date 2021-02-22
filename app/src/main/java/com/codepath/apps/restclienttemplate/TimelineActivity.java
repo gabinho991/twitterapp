@@ -26,30 +26,81 @@ public class TimelineActivity extends AppCompatActivity {
     List<Tweet> tweets;
     TweetAdapter adapter;
     SwipeRefreshLayout swipecontainer ;
+    EndlessRecyclerViewScrollListener scrollListener;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_timeline);
         swipecontainer = findViewById(R.id.swipecontainer);
+        swipecontainer.setColorSchemeResources(android.R.color.holo_blue_bright,
+                android.R.color.holo_green_light,
+                android.R.color.holo_orange_light,
+                android.R.color.holo_red_light);
+
+        swipecontainer.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
+            @Override
+            public void onRefresh() {
+              Log.i(TAG, "fetching new data") ;
+              populateHomeTimeline();
+            }
+        });
+
        client = TwitterApplication.getRestClient(this);
+
         rvTweets=findViewById(R.id.rvTweets);
         tweets = new ArrayList<>();
         adapter = new TweetAdapter(this, tweets);
+
+        LinearLayoutManager layoutManager=  new LinearLayoutManager( this);
         rvTweets.setLayoutManager(new LinearLayoutManager( this));
         rvTweets.setAdapter(adapter);
 
+        scrollListener = new EndlessRecyclerViewScrollListener(layoutManager) {
+            @Override
+            public void onLoadMore(int page, int totalItemsCount, RecyclerView view) {
+                    Log.i(TAG, "onLoadMore:"+page);
+                    loadMoreData();
+            }
+        };
+   //Adds the scroll listener to Recyclereview
+        rvTweets.addOnScrollListener(scrollListener );
        populateHomeTimeline();
+    }
+
+    private void loadMoreData() {
+        client.getNextPageOfTweets(new JsonHttpResponseHandler() {
+            @Override
+            public void onSuccess(int statusCode, Headers headers, JSON json) {
+                Log.i(TAG, "onSucess for loadmore data "+json.toString());
+                JSONArray jsonArray =json.jsonArray;
+
+                try {
+                    List<Tweet> tweets=Tweet.fromJsonArray(jsonArray);
+                    adapter.addAll(tweets);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+
+            }
+
+            @Override
+            public void onFailure(int statusCode, Headers headers, String response, Throwable throwable) {
+                Log.e(TAG, "onFailure for loadmore data", throwable);
+            }
+        },tweets.get(tweets.size()-1).id);
     }
 
     private void populateHomeTimeline() {
         client.getHomeTimeline(new JsonHttpResponseHandler() {
             @Override
             public void onSuccess(int statusCode, Headers headers, JSON json) {
-                Log.i(TAG, "onSucess ");
+                Log.i(TAG, "onSucess "+json.toString());
                 JSONArray jsonArray= json.jsonArray;
                 try {
-                    tweets.addAll(Tweet.fromJsonArray(jsonArray));
-                    adapter.notifyDataSetChanged();
+                    adapter.clear();
+                    adapter.addAll(Tweet.fromJsonArray(jsonArray));
+                    swipecontainer.setRefreshing(false);
+
                 } catch (JSONException e) {
                     Log.i(TAG, "Json execption");
                     //e.printStackTrace();
